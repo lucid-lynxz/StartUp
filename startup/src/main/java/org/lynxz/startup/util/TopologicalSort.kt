@@ -1,6 +1,6 @@
 package org.lynxz.startup.util
 
-import org.lynxz.startup.Task
+import org.lynxz.startup.bean.Task
 import java.util.*
 
 /**
@@ -20,7 +20,7 @@ object TopologicalSort {
 
         // 得到入度表 Map
         list.forEach {
-            it.getDependencies()?.forEach { dependency -> dependency.addChild(it) }
+//            it.getDependencies()?.forEach { dependency -> dependency.addChild(it) }
             inDegreeMap[it] = it.getDependenciesCount()
         }
 
@@ -36,7 +36,7 @@ object TopologicalSort {
                 if (inDegree == 0) {
                     zeroInDegreeStack.add(task)
                     iterator.remove()
-                    task.getChildren()?.forEach { inDegreeMap[it] = inDegreeMap[it]!!.minus(1) }
+//                    task.getChildren()?.forEach { inDegreeMap[it] = inDegreeMap[it]!!.minus(1) }
                     result.add(task) // 将入度为0的task加入到结果集中
                 }
             }

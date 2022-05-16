@@ -2,6 +2,7 @@ package org.lynxz.startup
 
 import android.content.Context
 import org.junit.Test
+import org.lynxz.startup.bean.Task
 
 class TopologicalSortTest {
 
@@ -56,6 +57,6 @@ class TopologicalSortTest {
             .addTask(task2)
             .addTask(task1)
             .build()
-            .start()
+            .start(null)
     }
 }
