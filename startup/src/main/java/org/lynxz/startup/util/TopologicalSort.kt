@@ -10,8 +10,9 @@ object TopologicalSort {
 
     /**
      * 将DAG task列表进行拓扑排序
+     * @return (排序后的列表, 出度map)
      */
-    fun sort(list: MutableList<Task<*>>): List<Task<*>> {
+    fun sort(list: MutableList<Task<*>>): Pair<List<Task<*>>, MutableMap<Task<*>, MutableList<Task<*>>>> {
         val result = mutableListOf<Task<*>>()
         val inDegreeMap = mutableMapOf<Task<*>, Int>()
 
@@ -23,6 +24,21 @@ object TopologicalSort {
 //            it.getDependencies()?.forEach { dependency -> dependency.addChild(it) }
             inDegreeMap[it] = it.getDependenciesCount()
         }
+
+
+        // 得到child task map
+        // parentTask -> childrenTasks
+        val childrenTaskMap = mutableMapOf<Task<*>, MutableList<Task<*>>>()
+        list.forEach { child ->
+            child.getDependencies()?.forEach { dependency ->
+                val childrenList = childrenTaskMap[dependency] ?: mutableListOf()
+                if (childrenList.indexOf(child) == -1) {
+                    childrenList.add(child)
+                }
+                childrenTaskMap[dependency] = childrenList
+            }
+        }
+
 
         // 遍历入度表Map
         while (inDegreeMap.isNotEmpty()) {
@@ -37,11 +53,12 @@ object TopologicalSort {
                     zeroInDegreeStack.add(task)
                     iterator.remove()
 //                    task.getChildren()?.forEach { inDegreeMap[it] = inDegreeMap[it]!!.minus(1) }
+                    childrenTaskMap[task]?.forEach { inDegreeMap[it] = inDegreeMap[it]!!.minus(1) }
                     result.add(task) // 将入度为0的task加入到结果集中
                 }
             }
         }
 
-        return result
+        return Pair(result, childrenTaskMap)
     }
 }

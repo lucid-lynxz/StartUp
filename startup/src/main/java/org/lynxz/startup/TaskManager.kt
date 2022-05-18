@@ -6,46 +6,83 @@ import org.lynxz.startup.bean.Task
 import org.lynxz.startup.bean.TaskResult
 import org.lynxz.startup.bean.TaskRunnable
 import org.lynxz.startup.util.TopologicalSort
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.*
 
 /**
  * <pre>
+ *   // 使用方法
  *   val taskManager = TaskManager.Builder()
- *                       .addTask(task1)
+ *                      .addTask(task1)  // 添加task, 可添加多个
  *                      .addTask(task2)
- *                      .build()
+ *                      .build()  // 进行拓扑排序
+ *                      .setExecutor(executorService) // 可选, 设置自定义线程池
  *                      .start(context)
  *
+ *   // 获取task执行结果, 若为null,表示task尚未执行结束
  *   val taskResult = taskManager.getResultOf(task1)
  * </pre>
  */
 class TaskManager private constructor() {
-    // 所有task
-    private var tasks: List<Task<*>>? = null
+    // 已完成拓扑排序的待执行的task列表
+    private var tasks: MutableList<Task<*>> = mutableListOf()
 
-    // parentTask -> childrenTasks
-    private val childrenTaskMap = mutableMapOf<Task<*>, MutableList<Task<*>>>()
+    // 出度表, key-value: parentTask -> childrenTasks
+    private lateinit var childrenTaskMap: Map<Task<*>, List<Task<*>>>
 
     // 缓存执行结果
     private val resultCacheMap = ConcurrentHashMap<Task<*>, TaskResult<*>>()
-    private fun isMainThread() = Thread.currentThread() == Looper.getMainLooper().thread
+
+    // 线程池,默认cpu密集型
+    private var executorService: ExecutorService
+
+    init {
+        // 默认的线程池:cpu密集型, 最大线程数为: cpu核心数+1
+        val processors = Runtime.getRuntime().availableProcessors()
+        executorService = ThreadPoolExecutor(
+            processors,
+            processors + 1,
+            60,
+            TimeUnit.SECONDS,
+            LinkedBlockingQueue(),
+            Executors.defaultThreadFactory(),
+            ThreadPoolExecutor.AbortPolicy()
+        )
+    }
+
+    private fun isMainThread() = Looper.myLooper() == Looper.getMainLooper()
+
+
+    /**
+     * 自定义线程池
+     */
+    fun setExecutor(executorService: ExecutorService): TaskManager {
+        this.executorService = executorService
+        return this
+    }
 
     /**
      * 对tasks进行拓扑排序后执行
      */
     fun start(context: Context?): TaskManager {
-        if (!isMainThread()) {
-            throw RuntimeException("please invoke in main thread")
-        }
+//        if (!isMainThread()) {
+//            throw RuntimeException("please invoke in main thread")
+//        }
 
-        tasks?.forEach { task ->
+        // 为避免主线程task先执行阻塞子线程task的运行, 先分类, 并优先提交子线程task
+        val mainThreadTasks = mutableListOf<TaskRunnable>()
+        val subThreadTasks = mutableListOf<TaskRunnable>()
+
+        tasks.forEach { task ->
             val runnable = TaskRunnable(context, task, this)
-            if (task.runOnMainThread()) {
-                runnable.run()
+            if (task.runOnMainThread) {
+                mainThreadTasks.add(runnable)
             } else {
-                // TODO: 在线程池中执行
+                subThreadTasks.add(runnable)
             }
         }
+
+        subThreadTasks.forEach { executorService.execute(it) }
+        mainThreadTasks.forEach { it.run() }
         return this
     }
 
@@ -77,19 +114,11 @@ class TaskManager private constructor() {
         }
 
         fun build() = TaskManager().apply {
-            // 得到child task map
-            bTasks.forEach { child ->
-                child.getDependencies()?.forEach { dependency ->
-                    val list = childrenTaskMap[dependency] ?: mutableListOf()
-                    if (list.indexOf(child) == -1) {
-                        list.add(child)
-                    }
-                    childrenTaskMap[dependency] = list
-                }
-            }
-
-            // 对task进行拓扑排序
-            tasks = TopologicalSort.sort(bTasks)
+            val (topologicalList, childrenMap) = TopologicalSort.sort(bTasks)
+            childrenTaskMap = childrenMap
+            tasks.clear()
+            tasks.addAll(topologicalList)
+            tasks.forEach { println("${it.name} main=${it.runOnMainThread}") }
         }
     }
 }
